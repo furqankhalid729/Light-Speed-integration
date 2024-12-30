@@ -30,78 +30,75 @@ class ShopifyWebhooksController extends Controller
         $line_items = $orderData["line_items"];
         $shipping = $orderData['current_shipping_price_set'];
         $note = $this->createNote($orderData);
+        $customerId = $this->getCustomerID($customerData["email"]);
+        if($customerId == null){
+            $customerId = $this->registerCustomer($customerData,$billingData);
+        }
+        $products = [];
+        // Log::info('Payload Data - ', [$payload]);
+        foreach ($line_items as $item) {
+            Log::info(' Data SKU - ', [$item['sku']]);
+            $id = $this->getLightSpeedProductID($item['sku']);
+            $price = $this->getPrice($item['price']);
+            $tax = $this->getTax($item['price']);
+            $loyalty_value = $this->getLoyality($item['price']);
+            if($id != null){
+                $products[] = [
+                    "product_id" => $id,
+                    "quantity"=> $item['current_quantity'],
+                    "price"=> $price,
+                    "tax"=> $tax,
+                    "loyalty_value"=> $loyalty_value
+                ];
+            }
+        }
+        $products[] = [
+            "product_id" => env("SHIPMENT_30"),
+            "quantity"=> 1,
+            "price"=> $shipping['shop_money']['amount'],
+            "tax"=> 0,
+        ];
+        $paymentType = $orderData['payment_gateway_names'][0];
+        $retailerPaymentTypeId = env('CREDIT_CARD_ID');
+        if ($paymentType === "manual") {
+            $retailerPaymentTypeId = env("CASH_ID");
+        }
+        $payload = [
+            "source_id"=> "7677676",
+            "register_id"=> env("REGISTER_ID"),
+            "customer_id"=> $customerId,
+            "status"=> "AWAITING_DISPATCH",
+            "register_sale_products"=> $products,
+            "note"=>$note,
+            "register_sale_payments"=> [
+                [
+                    "register_id"=> env("REGISTER_ID"),
+                    "retailer_payment_type_id"=> $retailerPaymentTypeId,
+                    "amount"=> $orderData['total_price']
+                ]
+            ]
+        ];
 
+        $url = env("LIGHTSPEED_ROOT_URL") . "api/register_sales";
+        Log::info('URL Link - ', [$url]);
+        $token = env("LIGHTSPED_PERSONAL_TOKEN");
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type' => 'application/json',
+            ])->post($url, $payload);
 
-
-        // $customerId = $this->getCustomerID($customerData["email"]);
-        // if($customerId == null){
-        //     $customerId = $this->registerCustomer($customerData,$billingData);
-        // }
-        // $products = [];
-        // // Log::info('Payload Data - ', [$payload]);
-        // foreach ($line_items as $item) {
-        //     Log::info(' Data SKU - ', [$item['sku']]);
-        //     $id = $this->getLightSpeedProductID($item['sku']);
-        //     $price = $this->getPrice($item['price']);
-        //     $tax = $this->getTax($item['price']);
-        //     $loyalty_value = $this->getLoyality($item['price']);
-        //     if($id != null){
-        //         $products[] = [
-        //             "product_id" => $id,
-        //             "quantity"=> $item['current_quantity'],
-        //             "price"=> $price,
-        //             "tax"=> $tax,
-        //             "loyalty_value"=> $loyalty_value
-        //         ];
-        //     }
-        // }
-        // $products[] = [
-        //     "product_id" => env("SHIPMENT_30"),
-        //     "quantity"=> 1,
-        //     "price"=> $shipping['shop_money']['amount'],
-        //     "tax"=> 0,
-        // ];
-        // $paymentType = $orderData['payment_gateway_names'][0];
-        // $retailerPaymentTypeId = env('CREDIT_CARD_ID');
-        // if ($paymentType === "manual") {
-        //     $retailerPaymentTypeId = env("CASH_ID");
-        // }
-        // $payload = [
-        //     "source_id"=> "7677676",
-        //     "register_id"=> env("REGISTER_ID"),
-        //     "customer_id"=> $customerId,
-        //     "status"=> "AWAITING_DISPATCH",
-        //     "register_sale_products"=> $products,
-        //     "note"=>$note,
-        //     "register_sale_payments"=> [
-        //         [
-        //             "register_id"=> env("REGISTER_ID"),
-        //             "retailer_payment_type_id"=> $retailerPaymentTypeId,
-        //             "amount"=> $orderData['total_price']
-        //         ]
-        //     ]
-        // ];
-
-        // $url = env("LIGHTSPEED_ROOT_URL") . "api/register_sales";
-        // Log::info('URL Link - ', [$url]);
-        // $token = env("LIGHTSPED_PERSONAL_TOKEN");
-        // try {
-        //     $response = Http::withHeaders([
-        //         'Authorization' => 'Bearer ' . $token,
-        //         'Content-Type' => 'application/json',
-        //     ])->post($url, $payload);
-
-        //     if ($response->successful()) {
-        //         Log::info('Request successful: ' . $response->body());
-        //         return response()->json($response->json());
-        //     } else {
-        //         Log::error('Request failed: ' . $response->body());
-        //         return response()->json(['error' => 'Request failed'], $response->status());
-        //     }
-        // } catch (\Exception $e) {
-        //     Log::error('Error sending request: ' . $e->getMessage());
-        //     return response()->json(['error' => 'Error sending request'], 500);
-        // }
+            if ($response->successful()) {
+                Log::info('Request successful: ' . $response->body());
+                return response()->json($response->json());
+            } else {
+                Log::error('Request failed: ' . $response->body());
+                return response()->json(['error' => 'Request failed'], $response->status());
+            }
+        } catch (\Exception $e) {
+            Log::error('Error sending request: ' . $e->getMessage());
+            return response()->json(['error' => 'Error sending request'], 500);
+        }
 
         return response()->json(['message' => 'Webhook received'], 200);
     }
