@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use App\Models\Order;
 
 class ShopifyWebhooksController extends Controller
 {
@@ -12,15 +13,26 @@ class ShopifyWebhooksController extends Controller
     {
         $orderData = $request->input();
         $formattedJsonData = json_encode($orderData);
-        Log::info('Order Created: ID - ' . $formattedJsonData);
+        Log::info('Order Created: ID - ' . $orderData['id']);
 
+        $id = $orderData['id'];
+        $order = Order::where('order_id', $id)->first();
+        Log::info('Order Created: ID - ' , [$order]);
+        if ($order) {
+            return response()->json(['message' => 'Order already exists in the database'], 200);
+        } else {
+            $order = new Order();
+            $order->order_id = $orderData['id'];
+            $order->save();
+        }
         $customerData = $orderData["customer"];
         $billingData = $orderData["billing_address"];
         $line_items = $orderData["line_items"];
         $shipping = $orderData['current_shipping_price_set'];
         $note = $this->createNote($orderData);
 
-        
+
+
         $customerId = $this->getCustomerID($customerData["email"]);
         if($customerId == null){
             $customerId = $this->registerCustomer($customerData,$billingData);
@@ -69,7 +81,7 @@ class ShopifyWebhooksController extends Controller
                 ]
             ]
         ];
-        
+
         $url = env("LIGHTSPEED_ROOT_URL") . "api/register_sales";
         Log::info('URL Link - ', [$url]);
         $token = env("LIGHTSPED_PERSONAL_TOKEN");
@@ -100,7 +112,8 @@ class ShopifyWebhooksController extends Controller
         Log::info('Product Created: ID - ' . $formattedJsonData);
     }
 
-    function getLightSpeedProductID($sku){
+    function getLightSpeedProductID($sku)
+    {
         $token = env("LIGHTSPED_PERSONAL_TOKEN");
         $url = env("LIGHTSPEED_ROOT_URL") . "api/2.0/search";
         $response = Http::withHeaders([
@@ -117,14 +130,13 @@ class ShopifyWebhooksController extends Controller
                     return $id;
                 }
             }
-        }
-        else{
+        } else {
             return null;
         }
-        
     }
 
-    function getCustomerID($email){
+    function getCustomerID($email)
+    {
         $token = env("LIGHTSPED_PERSONAL_TOKEN");
         $url = env("LIGHTSPEED_ROOT_URL") . "api/2.0/search";
         $response = Http::withHeaders([
@@ -142,14 +154,13 @@ class ShopifyWebhooksController extends Controller
                     return $id;
                 }
             }
-        }
-        else{
+        } else {
             return null;
         }
-        
     }
 
-    function registerCustomer($customerData,$billingData){
+    function registerCustomer($customerData, $billingData)
+    {
         $payload = [
             "phone" => $billingData["phone"],
             "mobile" => $billingData["phone"],
@@ -178,8 +189,7 @@ class ShopifyWebhooksController extends Controller
                             return $id;
                         }
                     }
-                }
-                else{
+                } else {
                     return null;
                 }
                 return response()->json($response->json());
@@ -191,27 +201,30 @@ class ShopifyWebhooksController extends Controller
             Log::error('Error sending request: ' . $e->getMessage());
             return response()->json(['error' => 'Error sending request'], 500);
         }
-
     }
 
-    function getPrice($price){
+    function getPrice($price)
+    {
         $priceFloat = (float) $price;
-        $discountedPrice = $priceFloat / 1.05; 
+        $discountedPrice = $priceFloat / 1.05;
         //return round($discountedPrice, 0, PHP_ROUND_HALF_UP);
         return $discountedPrice;
     }
-    function getTax($price){
+    function getTax($price)
+    {
         $taxFloat = (float) $price;
-        $taxPrice = ($taxFloat / 1.05) * 0.05; 
+        $taxPrice = ($taxFloat / 1.05) * 0.05;
         //$roundedTaxPrice = round($taxPrice, 0, PHP_ROUND_HALF_UP);
         return $taxPrice;
     }
 
-    function getLoyality($price){
-        return ($price/100);
+    function getLoyality($price)
+    {
+        return ($price / 100);
     }
 
-    function createNote($orderData){
+    function createNote($orderData)
+    {
         $billingData = $orderData["billing_address"];
         $phone = $billingData["phone"];
         $customerName = $orderData['customer']['first_name'] . ' ' . $orderData['customer']['last_name'];
@@ -225,24 +238,23 @@ class ShopifyWebhooksController extends Controller
         return $note;
     }
 
-    function getShippmentProduct($shippment){
-        Log::info('Shippment DAta: - ' ,[$shippment]);
+    function getShippmentProduct($shippment)
+    {
+        Log::info('Shippment DAta: - ', [$shippment]);
         $amount = $shippment['shop_money']['amount'];
-        if($amount == 30.0){
-            Log::info('Product DAta: - ' ,[env("SHIPMENT_30")]);
-        }
-        elseif($amount == 50.0){
-            Log::info('Product DAta: - ' ,[env("SHIPMENT_50")]);
-        }
-        elseif($amount == 80.0){
-            Log::info('Product DAta: - ' ,[env("SHIPMENT_80")]);
-        }
-        elseif($amount == 135.0){
-            Log::info('Product DAta: - ' ,[env("SHIPMENT_135")]);
+        if ($amount == 30.0) {
+            Log::info('Product DAta: - ', [env("SHIPMENT_30")]);
+        } elseif ($amount == 50.0) {
+            Log::info('Product DAta: - ', [env("SHIPMENT_50")]);
+        } elseif ($amount == 80.0) {
+            Log::info('Product DAta: - ', [env("SHIPMENT_80")]);
+        } elseif ($amount == 135.0) {
+            Log::info('Product DAta: - ', [env("SHIPMENT_135")]);
         }
     }
 
-    function getCustomSKU($sku){
+    function getCustomSKU($sku)
+    {
         $id =  $this->getLightSpeedProductID($sku);
         dd($id);
     }
