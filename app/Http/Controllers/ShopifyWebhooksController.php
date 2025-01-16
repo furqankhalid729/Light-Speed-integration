@@ -78,7 +78,7 @@ class ShopifyWebhooksController extends Controller
                 ]
             ]
         ];
-
+        Log::info('Payload Data - ', [$payload]);
         $url = env("LIGHTSPEED_ROOT_URL") . "api/register_sales";
         Log::info('URL Link - ', [$url]);
         $token = env("LIGHTSPED_PERSONAL_TOKEN");
